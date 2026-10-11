@@ -1,4 +1,5 @@
 import re
+import httpx
 from dataclasses import asdict
 from urllib.parse import urlparse
 import pytest
@@ -12,6 +13,7 @@ from app.credential_db import ConnectionDB
 from app.pairing import codes
 from app.alice import jobs
 from app.dikidi.discovery import parse_companies
+from app.dikidi.discovery import Discovery
 from tests.test_setup_and_speech import payload
 
 
@@ -29,6 +31,31 @@ class FakeDiscovery:
         return dict(self.masters_template)
     def close(self):
         self.password = ""
+
+
+def test_discovery_normalizes_phone_like_sdk():
+    discovery = Discovery('+7 (903) 123-45-67', 'secret')
+    try:
+        assert discovery.phone == '79031234567'
+    finally:
+        discovery.close()
+
+
+def test_http_failure_reports_only_status_and_fixed_step(browser, monkeypatch, caplog):
+    csrf = open_login(browser)
+    def fail(self):
+        request = httpx.Request('POST', 'https://auth.dikidi.ru/ajax/user/auth/?token=private-token')
+        response = httpx.Response(403, request=request, text='private-response')
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise setup.DiscoveryError('authentication') from exc
+    monkeypatch.setattr(FakeDiscovery, 'login', fail)
+    response = login(browser, csrf)
+    assert 'HTTP 403, шаг: password' in response.text
+    assert 'step=password status=403' in caplog.text
+    assert 'private-token' not in response.text + caplog.text
+    assert 'private-response' not in response.text + caplog.text
 
 
 @pytest.fixture

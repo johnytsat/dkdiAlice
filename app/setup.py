@@ -5,6 +5,7 @@ import time
 from threading import Lock, RLock
 from urllib.parse import parse_qs, urlsplit
 import logging
+import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
@@ -190,6 +191,18 @@ def advance(session, form):
             # Never log exception messages/responses: SDK errors may contain credentials.
             cause = exc.__cause__ or exc
             logger.warning('DIKIDI setup failed: stage=%s type=%s', stage, type(cause).__name__)
+            detail = ''
+            if isinstance(cause, httpx.HTTPStatusError):
+                # Fixed labels only: neither URL queries nor response bodies are safe to log.
+                step = {
+                    '/ru/': 'start',
+                    '/ajax/check/auth/': 'phone',
+                    '/ajax/user/auth/': 'password',
+                    '/ru/owner/journal/': 'crm',
+                }.get(cause.request.url.path, 'other')
+                status = cause.response.status_code
+                logger.warning('DIKIDI HTTP failure: step=%s status=%s', step, status)
+                detail = f' HTTP {status}, шаг: {step}.'
             session.close()
             session.company, session.masters = '', {}
             messages = {
@@ -200,7 +213,7 @@ def advance(session, form):
                 'save': 'Не удалось сохранить подключение в базе. Администратору нужно проверить хранилище.',
             }
             message = messages.get(stage, 'Не удалось завершить подключение.')
-            return page(message + ' Код ошибки: ' + stage + '.', session, status=400)
+            return page(message + ' Код ошибки: ' + stage + '.' + detail, session, status=400)
 
 
 @setup_router.post('/setup', response_class=HTMLResponse)

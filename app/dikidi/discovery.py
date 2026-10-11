@@ -5,7 +5,7 @@ import httpx
 from bs4 import BeautifulSoup
 from dikidi.auth.flow import AuthFlow
 from dikidi.catalog.service import CatalogService
-from dikidi.core.config import NET_URL, DEFAULT_USER_AGENT
+from dikidi.core.config import NET_URL, DEFAULT_USER_AGENT, DikidiConfig
 
 
 class DiscoveryError(Exception):
@@ -31,7 +31,8 @@ def parse_companies(html):
 
 class Discovery:
     def __init__(self, phone, password):
-        self.phone, self.password = phone, password
+        self.phone = DikidiConfig(phone=phone, password=password, company_id='').clean_phone
+        self.password = password
         self.client = httpx.Client(timeout=15, headers={"User-Agent": DEFAULT_USER_AGENT})
         self.companies = {}
         self.config = SimpleNamespace(company_id="")
