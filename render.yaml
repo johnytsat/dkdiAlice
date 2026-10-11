@@ -12,6 +12,10 @@ services:
         value: 3.13.0
       - key: DIKIDI_BACKEND
         value: sdk
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: ALICE_OWNER_ID
+        sync: false
       - key: DIKIDI_DEFAULT_STAFF_ID
         value: ""
       # sync: false — значения задаются вручную в дашборде Render

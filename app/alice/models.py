@@ -29,6 +29,7 @@ class AliceSession(BaseModel):
     session_id: str = ""
     skill_id: str = ""
     user_id: str | None = None
+    user: dict[str, Any] = Field(default_factory=dict)
 
 
 class AliceState(BaseModel):
@@ -43,9 +44,16 @@ class AliceRequestBody(BaseModel):
     version: str = "1.0"
 
 
+class AliceButton(BaseModel):
+    title: str
+    url: str | None = None
+    hide: bool = True
+
+
 class AliceResponsePayload(BaseModel):
     text: str
     tts: str | None = None
+    buttons: list[AliceButton] | None = None
     end_session: bool = False
 
 

@@ -7,6 +7,7 @@
 
 from dataclasses import dataclass, field
 from datetime import date, time
+from types import SimpleNamespace
 
 import pytest
 
@@ -70,9 +71,14 @@ class FakeAppointments:
         self.records_args = (date_from, date_to)
         return self._records
 
-    def book(self, request):
-        self.booked.append(request)
-        return {"record_id": "999"}
+    def reserve_time(self, **kwargs):
+        self.booked.append(SimpleNamespace(**kwargs))
+        return SimpleNamespace(record_id="999", unique_key="key")
+
+    def save_appointment(self, **kwargs):
+        self.booked[-1].__dict__.update(kwargs)
+        self._records.append(FakeSdkRecord("999", "15:00", kwargs["client_name"], kwargs["client_phone"]))
+        return {"success": True}
 
 
 class FakeClients:
@@ -255,3 +261,11 @@ def test_sdk_errors_become_dikidi_unavailable():
     api.appointments.get_records = boom
     with pytest.raises(DikidiUnavailable):
         make_client(api).get_bookings_for_date(date(2026, 10, 12))
+
+
+def test_save_without_journal_confirmation_is_not_success():
+    api = FakeApi()
+    api.appointments.save_appointment = lambda **kwargs: {}
+    with pytest.raises(DikidiUnavailable):
+        make_client(api).create_booking(0, "Анна", "+79035523232",
+            [Service(id="11", title="услуга")], date(2026, 10, 12), time(15))

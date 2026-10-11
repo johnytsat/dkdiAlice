@@ -8,6 +8,10 @@ class DikidiUnavailable(RuntimeError):
     """Dikidi недоступна или сменила шлюзы — навык должен сказать это вслух."""
 
 
+class BookingUncertain(DikidiUnavailable):
+    """После попытки записи нельзя безопасно повторять операцию автоматически."""
+
+
 class DikidiClient(ABC):
     """Интерфейс к Dikidi. Конкретная реализация подключается через app.config.settings.dikidi_backend."""
 

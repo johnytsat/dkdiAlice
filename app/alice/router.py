@@ -15,6 +15,10 @@ ADD_BOOKING_KEYWORDS = [
     "запиши клиента", "запись клиента", "добавь клиента",
 ]
 TODAY_BOOKINGS_CONTEXT_WORDS = ["запис", "человек", "клиент"]
+SETUP_KEYWORDS = [
+    "настройк", "настроить", "привяж", "привязать", "подключи аккаунт",
+    "сменить аккаунт", "сменить салон", "другой аккаунт",
+]
 
 
 def handle(body: AliceRequestBody, dikidi: DikidiClient) -> tuple[str, dict]:

@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 import re
 import tempfile
 import threading
@@ -27,7 +28,7 @@ import time as time_module
 from datetime import date, time
 from pathlib import Path
 
-from app.dikidi.client import DikidiClient, DikidiUnavailable
+from app.dikidi.client import DikidiClient, DikidiUnavailable, BookingUncertain
 from app.dikidi.models import Booking, Service
 
 logger = logging.getLogger(__name__)
@@ -57,10 +58,13 @@ class SdkDikidiClient(DikidiClient):
         # На Render файловая система эфемерная, поэтому кука живёт в tempdir и
         # после холодного старта SDK просто логинится заново.
         self._session_file = Path(session_file) if session_file else (
-            Path(tempfile.gettempdir()) / "dikidi_session_cookies.json"
+            Path(tempfile.gettempdir()) / ("dikidi_" + hashlib.sha256(
+                f"{phone}:{company_id}:{password}".encode()
+            ).hexdigest() + "_cookies.json")
         )
 
         self._lock = threading.Lock()
+        self._request_lock = threading.Lock()
         self._api = None
         self._services_cache: list[Service] = []
         self._services_cached_at = 0.0
@@ -88,11 +92,12 @@ class SdkDikidiClient(DikidiClient):
     def _call(self, description: str, func, *args, **kwargs):
         """Единая точка вызова SDK: логирует и приводит любые сбои к DikidiUnavailable."""
         try:
-            return func(*args, **kwargs)
+            with self._request_lock:
+                return func(*args, **kwargs)
         except DikidiUnavailable:
             raise
         except Exception as exc:
-            logger.exception("Dikidi SDK: %s не удалось", description)
+            logger.warning("Dikidi SDK: %s не удалось (%s)", description, type(exc).__name__)
             raise DikidiUnavailable(f"Dikidi недоступна: {description}") from exc
 
     # --- DikidiClient ---------------------------------------------------
@@ -130,7 +135,13 @@ class SdkDikidiClient(DikidiClient):
         # сохранении записи, если передать client_id=0 вместе с именем и телефоном.
         return NEW_CLIENT_ID
 
-    def create_booking(
+    def create_booking(self, *args, **kwargs) -> int | str:
+        try:
+            return self._create_booking(*args, **kwargs)
+        except Exception as exc:
+            raise BookingUncertain("Проверьте результат в журнале Dikidi") from exc
+
+    def _create_booking(
         self,
         client_id: int | str,
         client_name: str,
@@ -150,10 +161,29 @@ class SdkDikidiClient(DikidiClient):
             client_phone=client_phone,
             client_id=client_id or None,
         )
-        result = self._call("создание записи", api.appointments.book, request)
-        if isinstance(result, dict):
-            return result.get("record_id") or result.get("id") or 0
-        return 0
+        # book() теряет record_id, возвращая только ответ save_appointment.
+        reservation = self._call(
+            "резервирование времени", api.appointments.reserve_time,
+            master_id=request.master_id, service_ids=request.service_ids,
+            time_str=request.time_str,
+        )
+        if not reservation.record_id:
+            raise DikidiUnavailable("Dikidi не вернула номер записи")
+        self._call(
+            "сохранение записи", api.appointments.save_appointment,
+            record_id=reservation.record_id, unique_key=reservation.unique_key,
+            client_name=request.client_name, client_phone=request.client_phone,
+            client_id=request.client_id,
+        )
+        # HTTP 200 и даже пустой JSON ещё не означают сохранённый визит.
+        records = self._call("проверка сохранения", api.appointments.get_records,
+                             booking_date.isoformat(), booking_date.isoformat())
+        if not any(str(r.id) == str(reservation.record_id)
+                   and not r.is_block
+                   and _phone_digits(r.client_phone) == _phone_digits(client_phone)
+                   for r in records):
+            raise DikidiUnavailable("Сохранение записи не подтверждено журналом")
+        return reservation.record_id
 
     def get_bookings_for_date(self, booking_date: date) -> list[Booking]:
         api = self._get_api()

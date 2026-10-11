@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Literal
 
 
 class Settings(BaseSettings):
@@ -7,7 +8,9 @@ class Settings(BaseSettings):
     # "mock" — для разработки/тестов без реальной Dikidi,
     # "sdk"  — вход по телефону и паролю через пакет dikidi-api-client,
     # "http" — официальный API, когда Dikidi выдаст партнёрский токен.
-    dikidi_backend: str = "mock"
+    dikidi_backend: Literal["mock", "sdk", "http"] = "mock"
+    public_base_url: str = ""
+    alice_owner_id: str = ""
 
     # Для backend=sdk (вход как в браузере).
     dikidi_phone: str = ""
