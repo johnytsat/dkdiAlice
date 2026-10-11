@@ -199,6 +199,7 @@ def advance(session, form):
                     '/ajax/check/auth/': 'phone',
                     '/ajax/user/auth/': 'password',
                     '/ru/owner/journal/': 'crm',
+                    '/business/': 'business',
                 }.get(cause.request.url.path, 'other')
                 status = cause.response.status_code
                 logger.warning('DIKIDI HTTP failure: step=%s status=%s', step, status)

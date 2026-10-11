@@ -41,6 +41,25 @@ def test_discovery_normalizes_phone_like_sdk():
         discovery.close()
 
 
+def test_company_discovery_uses_business_page_not_empty_journal(monkeypatch):
+    from app.dikidi import discovery as module
+    monkeypatch.setattr(module.AuthFlow, 'login', lambda *args: 'user')
+    seen = []
+    def respond(request):
+        seen.append(str(request.url))
+        if request.url.path == '/business/':
+            return httpx.Response(200, text='<a href="/ru/owner/journal/?company=12">Салон Анны</a>')
+        return httpx.Response(404)
+    discovery = Discovery('+70000000000', 'secret')
+    discovery.client.close()
+    discovery.client = httpx.Client(transport=httpx.MockTransport(respond))
+    try:
+        assert discovery.login() == {'12': 'Салон Анны'}
+        assert seen == ['https://dikidi.ru/business/']
+    finally:
+        discovery.close()
+
+
 def test_http_failure_reports_only_status_and_fixed_step(browser, monkeypatch, caplog):
     csrf = open_login(browser)
     def fail(self):

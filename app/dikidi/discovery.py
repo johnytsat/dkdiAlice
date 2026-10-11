@@ -5,7 +5,7 @@ import httpx
 from bs4 import BeautifulSoup
 from dikidi.auth.flow import AuthFlow
 from dikidi.catalog.service import CatalogService
-from dikidi.core.config import NET_URL, DEFAULT_USER_AGENT, DikidiConfig
+from dikidi.core.config import NET_URL, BASE_URL, DEFAULT_USER_AGENT, DikidiConfig
 
 
 class DiscoveryError(Exception):
@@ -14,13 +14,13 @@ class DiscoveryError(Exception):
         super().__init__(stage)
 
 
-def parse_companies(html):
+def parse_companies(html, base_url=NET_URL):
     """Only links to the owner area; never treat arbitrary numeric IDs as companies."""
     result = {}
     soup = BeautifulSoup(html, "html.parser")
     for a in soup.select("a[href]"):
-        url = urlparse(urljoin(NET_URL, a["href"]))
-        if url.hostname != urlparse(NET_URL).hostname or not url.path.startswith("/ru/owner/"):
+        url = urlparse(urljoin(base_url, a["href"]))
+        if url.scheme != 'https' or url.hostname not in (urlparse(NET_URL).hostname, urlparse(BASE_URL).hostname) or not url.path.startswith("/ru/owner/"):
             continue
         company_id = parse_qs(url.query).get("company", [""])[0]
         name = a.get_text(" ", strip=True)
@@ -44,9 +44,11 @@ class Discovery:
         except Exception as exc:
             raise DiscoveryError('authentication') from exc
         try:
-            response = self.client.get(f"{NET_URL}/ru/owner/journal/", follow_redirects=True)
+            # The journal requires a company. The business landing page lists
+            # the authenticated user's projects before one is selected.
+            response = self.client.get(f"{BASE_URL}/business/", follow_redirects=True)
             response.raise_for_status()
-            self.companies = parse_companies(response.text)
+            self.companies = parse_companies(response.text, str(response.url))
         except Exception as exc:
             raise DiscoveryError('companies') from exc
         if not self.companies:
