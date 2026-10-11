@@ -3,7 +3,8 @@ from html import escape
 import secrets
 import time
 from threading import Lock, RLock
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit
+import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
@@ -16,6 +17,7 @@ setup_router = APIRouter()
 _sessions = {}
 _lock = Lock()
 COOKIE = 'dikidi_setup'
+logger = logging.getLogger(__name__)
 
 class Session:
     def __init__(self, owner):
@@ -64,10 +66,20 @@ def page(message='', session=None, choices=None, action='login', status=200):
     return HTMLResponse(html, status_code=status, headers={'Cache-Control':'no-store','Referrer-Policy':'no-referrer', 'Content-Security-Policy':f"default-src 'none'; style-src 'nonce-{nonce}'; script-src 'nonce-{nonce}'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
 
 
-async def form_data(request):
-    origin = request.headers.get('origin')
-    if origin and origin.rstrip('/') != settings.public_base_url.rstrip('/'):
+def url_origin(value):
+    parsed = urlsplit(value.strip())
+    if parsed.scheme not in ('https', 'http') or not parsed.hostname or parsed.username or parsed.password:
         raise ValueError('Origin')
+    return parsed.scheme, parsed.hostname, parsed.port or (443 if parsed.scheme == 'https' else 80)
+
+
+async def form_data(request, allow_opaque_origin=False):
+    origin = request.headers.get('origin')
+    # Some embedded browsers send an opaque Origin. Only the session-bound
+    # form may accept it: advance still requires the secret CSRF token.
+    if origin and not (origin == 'null' and allow_opaque_origin):
+        if url_origin(origin) != url_origin(settings.public_base_url):
+            raise ValueError('Origin')
     raw = bytearray()
     async for chunk in request.stream():
         raw.extend(chunk)
@@ -180,7 +192,11 @@ async def save_setup(request: Request):
     if not session:
         return page('Ссылка истекла. Скажите Алисе «настройка».', status=403)
     try:
-        form = await form_data(request)
-    except (ValueError, UnicodeError):
-        return page('Не удалось отправить форму.', status=400)
+        form = await form_data(request, allow_opaque_origin=True)
+    except (ValueError, UnicodeError) as exc:
+        reason = str(exc) if str(exc) in ('Origin', 'Body too large', 'Duplicate field') else 'Invalid encoding or fields'
+        logger.warning('Setup form rejected: %s', reason)
+        message = ('Адрес страницы не совпадает с настройкой сервера. Администратору нужно проверить PUBLIC_BASE_URL. Откройте новую ссылку из Алисы.'
+                   if reason == 'Origin' else 'Не удалось прочитать форму. Откройте новую ссылку из Алисы и повторите ввод.')
+        return page(message, status=400)
     return await run_in_threadpool(advance, session, form)

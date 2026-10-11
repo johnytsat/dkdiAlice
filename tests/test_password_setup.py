@@ -92,6 +92,26 @@ def test_two_fields_auto_select_and_restore(browser):
     assert "только владельцу" in browser.post("/alice/webhook", json=other).json()["response"]["text"]
 
 
+@pytest.mark.parametrize('origin', ['https://testserver', 'https://testserver:443', 'null'])
+def test_browser_origins_with_valid_csrf(browser, monkeypatch, origin):
+    csrf = open_login(browser)
+    monkeypatch.setattr(settings, 'public_base_url', 'https://testserver/setup/')
+    response = browser.post('/setup', headers={'Origin': origin}, data={
+        'action': 'login', 'csrf': csrf, 'phone': '+70000000000', 'password': 'hidden-password'})
+    assert 'Готово' in response.text
+
+
+def test_foreign_origin_and_opaque_origin_without_csrf_rejected(browser):
+    csrf = open_login(browser)
+    form = {'action': 'login', 'csrf': csrf, 'phone': '+70000000000', 'password': 'hidden-password'}
+    response = browser.post('/setup', headers={'Origin': 'https://evil.test'}, data=form)
+    assert response.status_code == 400
+    assert 'PUBLIC_BASE_URL' in response.text
+    form['csrf'] = 'wrong'
+    assert browser.post('/setup', headers={'Origin': 'null'}, data=form).status_code == 403
+    assert not store.get().is_complete
+
+
 def test_multiple_choices_by_name(browser, monkeypatch):
     monkeypatch.setattr(FakeDiscovery, "companies_template", {"1": "Салон А", "2": "Салон Б"})
     monkeypatch.setattr(FakeDiscovery, "masters_template", {"7": "Анна", "8": "Мария"})
