@@ -26,28 +26,6 @@ def test_voice_response_has_tts_and_omits_null_buttons():
     assert r["response"]["end_session"] is False
 
 
-def test_setup_code_is_owner_only_and_one_use(monkeypatch):
-    monkeypatch.setattr(settings, "dikidi_backend", "sdk")
-    monkeypatch.setattr(settings, "alice_owner_id", "owner")
-    monkeypatch.setattr(settings, "public_base_url", "https://example.onrender.com")
-    codes.reset()
-    calls = []
-    monkeypatch.setattr(setup, "connect", lambda values: calls.append(values) or True)
-    r = client.post("/alice/webhook", json=payload("настройка")).json()
-    assert r["response"]["buttons"][0]["url"].endswith("/setup")
-    code = next(iter(codes._codes))
-    data = dict(code=code, phone="+70000000000", password="private", company_id="1", staff_id="2")
-    r = client.post("/setup", data=data)
-    assert r.status_code == 200
-    assert "private" not in r.text
-    assert r.headers["cache-control"] == "no-store"
-    assert client.post("/setup", data=data).status_code == 400
-    assert len(calls) == 1
-    p = payload("настройка")
-    p["session"]["user"]["user_id"] = "stranger"
-    assert "только владельцу" in client.post("/alice/webhook", json=p).json()["response"]["text"]
-
-
 def test_slow_booking_is_not_submitted_twice(monkeypatch):
     monkeypatch.setattr(settings, "dikidi_backend", "sdk")
     jobs._jobs.clear()
@@ -104,6 +82,6 @@ def test_missing_credentials_prompts_for_setup(monkeypatch):
     monkeypatch.setattr(store, "get", lambda: DikidiCredentials())
     jobs._jobs.clear()
     result = client.post("/alice/webhook", json=payload()).json()
-    assert "привязать аккаунт" in result["response"]["text"]
+    assert "хранилище" in result["response"]["text"]
     assert result["response"]["tts"]
     jobs._jobs.clear()

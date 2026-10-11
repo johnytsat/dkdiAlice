@@ -9,6 +9,7 @@ from app.config import settings
 from app.dikidi.client import DikidiUnavailable, BookingUncertain
 from app.dikidi.provider import provider
 from app.setup import setup_router
+from app.credentials import store
 
 logger = logging.getLogger(__name__)
 for name in ('DikidiAuth', 'DikidiTransport', 'DikidiTokenStorage',
@@ -24,6 +25,13 @@ def health() -> dict:
 
 def dispatch(body):
     try:
+        if settings.dikidi_backend == 'sdk':
+            owner = store.get().owner_id
+            user_id = body.session.user.get('user_id') or body.session.user_id
+            if owner and owner != user_id:
+                return 'Этот навык доступен только владельцу салона.', {}, None
+        if any(word in body.request.command.lower() for word in router.SETUP_KEYWORDS):
+            return setup_prompt.handle(body)
         client = provider.get()
         if client is None:
             return setup_prompt.handle(body)
@@ -49,8 +57,6 @@ def alice_webhook(body: AliceRequestBody) -> AliceResponseBody:
     user_id = body.session.user.get('user_id') or body.session.user_id
     if settings.alice_owner_id and user_id != settings.alice_owner_id:
         return reply('Этот навык доступен только владельцу салона.')
-    if any(word in command for word in router.SETUP_KEYWORDS):
-        return reply(*setup_prompt.handle(body))
     if settings.dikidi_backend == 'mock':
         return reply(*dispatch(body))
     if not body.session.session_id:

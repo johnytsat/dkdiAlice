@@ -14,15 +14,17 @@ services:
         value: sdk
       - key: PUBLIC_BASE_URL
         sync: false
-      - key: ALICE_OWNER_ID
-        sync: false
-      - key: DIKIDI_DEFAULT_STAFF_ID
-        value: ""
-      # sync: false — значения задаются вручную в дашборде Render
-      # и не попадают в git.
-      - key: DIKIDI_PHONE
-        sync: false
-      - key: DIKIDI_PASSWORD
-        sync: false
-      - key: DIKIDI_COMPANY_ID
-        sync: false
+      - key: CREDENTIALS_ENCRYPTION_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dikidi-connections
+          property: connectionString
+
+# Free expires after 30 days. Select a paid database explicitly for long-term use.
+databases:
+  - name: dikidi-connections
+    plan: free
+    region: frankfurt
+    databaseName: dikidi
+    user: dikidi

@@ -1,0 +1,8 @@
+# Database only: use this Blueprint for an EXISTING web service.
+# Then copy Internal Database URL into that service's DATABASE_URL.
+databases:
+  - name: dikidi-connections
+    plan: free
+    region: frankfurt
+    databaseName: dikidi
+    user: dikidi

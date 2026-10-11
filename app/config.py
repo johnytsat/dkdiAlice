@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     dikidi_backend: Literal["mock", "sdk", "http"] = "mock"
     public_base_url: str = ""
     alice_owner_id: str = ""
+    database_url: str = ""
+    credentials_encryption_key: str = ""
 
     # Для backend=sdk (вход как в браузере).
     dikidi_phone: str = ""
