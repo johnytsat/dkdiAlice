@@ -8,6 +8,12 @@ from dikidi.catalog.service import CatalogService
 from dikidi.core.config import NET_URL, DEFAULT_USER_AGENT
 
 
+class DiscoveryError(Exception):
+    def __init__(self, stage):
+        self.stage = stage
+        super().__init__(stage)
+
+
 def parse_companies(html):
     """Only links to the owner area; never treat arbitrary numeric IDs as companies."""
     result = {}
@@ -32,12 +38,18 @@ class Discovery:
 
     def login(self):
         # AuthFlow's company parameter is only used after authentication, for navigation.
-        AuthFlow.login(self.client, self.phone, self.password, "")
-        response = self.client.get(f"{NET_URL}/ru/owner/journal/", follow_redirects=True)
-        response.raise_for_status()
-        self.companies = parse_companies(response.text)
+        try:
+            AuthFlow.login(self.client, self.phone, self.password, "")
+        except Exception as exc:
+            raise DiscoveryError('authentication') from exc
+        try:
+            response = self.client.get(f"{NET_URL}/ru/owner/journal/", follow_redirects=True)
+            response.raise_for_status()
+            self.companies = parse_companies(response.text)
+        except Exception as exc:
+            raise DiscoveryError('companies') from exc
         if not self.companies:
-            raise ValueError("Company navigation was not found")
+            raise DiscoveryError('companies')
         return self.companies
 
     def masters(self, company_id):

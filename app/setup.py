@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 from app.config import settings
 from app.credentials import DikidiCredentials, store
-from app.dikidi.discovery import Discovery
+from app.dikidi.discovery import Discovery, DiscoveryError
 from app.pairing import codes, PairingError
 
 setup_router = APIRouter()
@@ -28,6 +28,7 @@ class Session:
         self.company = ''
         self.masters = {}
         self.attempts = 0
+        self.stage = 'storage'
         self.lock = RLock()
     def close(self):
         if self.discovery:
@@ -128,6 +129,7 @@ def setup_page(request: Request):
 
 
 def finish(session, staff):
+    session.stage = 'save'
     discovery = session.discovery
     store.set(DikidiCredentials(phone=discovery.phone, password=discovery.password,
               company_id=session.company, default_staff_id=staff, owner_id=session.owner))
@@ -139,6 +141,7 @@ def finish(session, staff):
 
 
 def choose_company(session, company):
+    session.stage = 'masters'
     if company not in session.discovery.companies:
         raise ValueError('Unknown company')
     masters = session.discovery.masters(company)
@@ -157,6 +160,7 @@ def advance(session, form):
         if settings.dikidi_backend != 'sdk':
             return page('Подключение временно недоступно.', status=503)
         try:
+            session.stage = 'storage'
             store.database()  # Fail before accepting passwords if durable storage isn't ready.
             current = store.get()
             if current.owner_id and current.owner_id != session.owner:
@@ -170,6 +174,7 @@ def advance(session, form):
                     return page('Слишком много попыток. Получите новую ссылку у Алисы.', status=429)
                 session.close()
                 session.company, session.masters = '', {}
+                session.stage = 'authentication'
                 session.discovery = Discovery(form['phone'].strip(), form['password'])
                 companies = session.discovery.login()
                 if len(companies) == 1:
@@ -180,10 +185,22 @@ def advance(session, form):
             if action == 'staff' and form.get('choice') in session.masters:
                 return finish(session, form['choice'])
             raise ValueError('Invalid step')
-        except Exception:
+        except Exception as exc:
+            stage = exc.stage if isinstance(exc, DiscoveryError) else session.stage
+            # Never log exception messages/responses: SDK errors may contain credentials.
+            cause = exc.__cause__ or exc
+            logger.warning('DIKIDI setup failed: stage=%s type=%s', stage, type(cause).__name__)
             session.close()
             session.company, session.masters = '', {}
-            return page('Не удалось подключиться. Проверьте телефон и пароль. Если они верны, возможно, DIKIDI изменил страницу кабинета — сообщите об ошибке администратору.', session, status=400)
+            messages = {
+                'storage': 'Не удалось открыть защищённое хранилище. Администратору нужно проверить базу и ключ шифрования.',
+                'authentication': 'Не удалось завершить вход через DIKIDI. Это может быть ограничение автоматического входа или изменение страницы авторизации, а не неверный пароль.',
+                'companies': 'Не удалось получить список салонов после входа. Требуется исправить чтение кабинета DIKIDI; повторный ввод пароля не решит эту ошибку.',
+                'masters': 'Не удалось получить мастеров выбранного салона. Проверьте доступ к сотрудникам в DIKIDI Business.',
+                'save': 'Не удалось сохранить подключение в базе. Администратору нужно проверить хранилище.',
+            }
+            message = messages.get(stage, 'Не удалось завершить подключение.')
+            return page(message + ' Код ошибки: ' + stage + '.', session, status=400)
 
 
 @setup_router.post('/setup', response_class=HTMLResponse)

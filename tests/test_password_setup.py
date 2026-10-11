@@ -149,6 +149,32 @@ def test_failed_login_does_not_replace_saved_connection(browser, monkeypatch):
     assert store.get().password == "previous"
 
 
+@pytest.mark.parametrize('stage', ['authentication', 'companies', 'masters', 'save', 'storage'])
+def test_setup_error_stage_without_sensitive_details(browser, monkeypatch, caplog, stage):
+    csrf = open_login(browser)
+    def fail(*args):
+        raise RuntimeError('sensitive-password private response')
+    if stage in ('authentication', 'companies'):
+        def discovery_fail(self):
+            try:
+                fail()
+            except RuntimeError as exc:
+                raise setup.DiscoveryError(stage) from exc
+        monkeypatch.setattr(FakeDiscovery, 'login', discovery_fail)
+    elif stage == 'masters':
+        monkeypatch.setattr(FakeDiscovery, 'masters', fail)
+    elif stage == 'save':
+        monkeypatch.setattr(store, 'set', fail)
+    else:
+        monkeypatch.setattr(store, 'database', fail)
+    response = login(browser, csrf)
+    assert response.status_code == 400
+    assert 'Код ошибки: ' + stage in response.text
+    assert 'stage=' + stage in caplog.text
+    assert 'sensitive-password' not in response.text + caplog.text
+    assert 'private response' not in response.text + caplog.text
+
+
 def test_database_encrypted_restart_and_owner_guard(tmp_path):
     path = tmp_path / "secret.db"
     url = "sqlite:///" + path.as_posix()
