@@ -89,6 +89,8 @@ class SdkDikidiClient(DikidiClient):
                     company_id=self._company_id,
                     session_file=self._session_file,
                 )
+                from app.dikidi.appointments import MultiServiceAppointments
+                self._api.appointments = MultiServiceAppointments(self._api.transport)
             return self._api
 
     def _call(self, description: str, func, *args, **kwargs):
