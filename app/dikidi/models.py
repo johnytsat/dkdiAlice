@@ -22,6 +22,6 @@ class Booking:
     id: int
     client_name: str
     client_phone: str
-    service_title: str
+    service_titles: list[str]
     date: date
     time: time

@@ -33,6 +33,7 @@ def test_full_booking_without_state_echo(dikidi):
     )
     router.handle(build_request("89991234567", include_state=False), dikidi)
     router.handle(build_request("маникюр", include_state=False), dikidi)
+    router.handle(build_request("всё", include_state=False), dikidi)
     router.handle(
         build_request(
             "завтра",

@@ -6,12 +6,18 @@ from datetime import date, time
 from app.dikidi.client import DikidiClient
 from app.dikidi.models import Booking, Client, Service
 
+# Заглушка каталога: в проде список приходит из Dikidi через list_services().
 _DEFAULT_SERVICES = [
     Service(id=1, title="маникюр", duration_minutes=60, price=1500),
     Service(id=2, title="педикюр", duration_minutes=90, price=2000),
     Service(id=3, title="стрижка", duration_minutes=45, price=1200),
     Service(id=4, title="окрашивание", duration_minutes=120, price=4500),
     Service(id=5, title="массаж", duration_minutes=60, price=2500),
+    Service(id=6, title="руки полностью", duration_minutes=30, price=900),
+    Service(id=7, title="ноги полностью", duration_minutes=45, price=1400),
+    Service(id=8, title="живот", duration_minutes=20, price=600),
+    Service(id=9, title="спина", duration_minutes=30, price=1000),
+    Service(id=10, title="подмышки", duration_minutes=15, price=500),
 ]
 
 
@@ -39,7 +45,7 @@ class MockDikidiClient(DikidiClient):
         client_id: int,
         client_name: str,
         client_phone: str,
-        service: Service,
+        services: list[Service],
         booking_date: date,
         booking_time: time,
     ) -> int:
@@ -48,7 +54,7 @@ class MockDikidiClient(DikidiClient):
             id=booking_id,
             client_name=client_name,
             client_phone=client_phone,
-            service_title=service.title,
+            service_titles=[service.title for service in services],
             date=booking_date,
             time=booking_time,
         )

@@ -61,16 +61,18 @@ class HttpDikidiClient(DikidiClient):
         client_id: int,
         client_name: str,
         client_phone: str,
-        service: Service,
+        services: list[Service],
         booking_date: date,
         booking_time: time,
     ) -> int:
-        # TODO: заменить на реальный эндпоинт создания записи
+        # TODO: заменить на реальный эндпоинт создания записи.
+        # Уточнить у Dikidi, как передаются несколько услуг в одной записи
+        # (список service_ids или отдельные записи на каждую услугу).
         response = self._client.post(
             f"/company/{self.company_id}/records",
             json={
                 "client_id": client_id,
-                "service_id": service.id,
+                "service_ids": [service.id for service in services],
                 "staff_id": self.default_staff_id,
                 "date": booking_date.isoformat(),
                 "time": booking_time.strftime("%H:%M"),
@@ -92,7 +94,7 @@ class HttpDikidiClient(DikidiClient):
                 id=item["id"],
                 client_name=item["client_name"],
                 client_phone=item["client_phone"],
-                service_title=item["service_title"],
+                service_titles=item.get("service_titles", []),
                 date=booking_date,
                 time=time.fromisoformat(item["time"]),
             )

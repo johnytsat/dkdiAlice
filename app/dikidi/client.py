@@ -21,11 +21,11 @@ class DikidiClient(ABC):
         client_id: int,
         client_name: str,
         client_phone: str,
-        service: Service,
+        services: list[Service],
         booking_date: date,
         booking_time: time,
     ) -> int:
-        """Создаёт запись в Dikidi, возвращает id записи."""
+        """Создаёт запись в Dikidi на одну или несколько услуг, возвращает id записи."""
 
     @abstractmethod
     def get_bookings_for_date(self, booking_date: date) -> list[Booking]:
