@@ -35,6 +35,17 @@ def extract_phone(text: str) -> str | None:
     return "+7" + "".join(match.groups())
 
 
+def extract_name_from_entities(entities: list[NluEntity]) -> str | None:
+    for entity in entities:
+        if entity.type != "YANDEX.FIO" or not isinstance(entity.value, dict):
+            continue
+        parts = [entity.value.get("first_name"), entity.value.get("last_name")]
+        name = " ".join(part.capitalize() for part in parts if part)
+        if name:
+            return name
+    return None
+
+
 def extract_name(text: str) -> str | None:
     words = re.findall(r"[А-ЯЁ][а-яё]+", text)
     candidates = [w for w in words if w.lower() not in NAME_STOPWORDS]

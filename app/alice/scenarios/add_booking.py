@@ -94,7 +94,7 @@ def _extract_into(
             data["time"] = parsed_time.strftime("%H:%M")
 
     if "name" not in data:
-        name = nlu.extract_name(original)
+        name = nlu.extract_name_from_entities(entities) or nlu.extract_name(original)
         if name:
             data["name"] = name
         elif focus_slot == "name" and original:

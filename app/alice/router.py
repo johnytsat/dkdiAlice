@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.alice import session_store
 from app.alice.models import AliceRequestBody
 from app.alice.scenarios import add_booking, today_bookings
 from app.dikidi.client import DikidiClient
@@ -17,8 +18,15 @@ TODAY_BOOKINGS_CONTEXT_WORDS = ["запис", "человек", "клиент"]
 
 
 def handle(body: AliceRequestBody, dikidi: DikidiClient) -> tuple[str, dict]:
-    state = body.state.session or {}
+    session_id = body.session.session_id
+    state = body.state.session or session_store.get(session_id)
 
+    text, new_state = _dispatch(body, state, dikidi)
+    session_store.put(session_id, new_state)
+    return text, new_state
+
+
+def _dispatch(body: AliceRequestBody, state: dict, dikidi: DikidiClient) -> tuple[str, dict]:
     if state.get("scenario") == "add_booking":
         return add_booking.handle(body, state, dikidi)
 
