@@ -1,0 +1,22 @@
+# Пример конфига nginx для вебхука Алисы.
+# Яндекс Диалоги принимают только HTTPS с валидным сертификатом (например, Let's Encrypt / certbot).
+
+server {
+    listen 80;
+    server_name your-domain.example;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name your-domain.example;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.example/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
+
+    location /alice/webhook {
+        proxy_pass http://127.0.0.1:8000/alice/webhook;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}

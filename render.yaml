@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: dikidi-alice-skill
+    env: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.0
+      - key: DIKIDI_BACKEND
+        value: mock
+      - key: DIKIDI_DEFAULT_STAFF_ID
+        value: "0"
+      - key: DIKIDI_TOKEN
+        sync: false
+      - key: DIKIDI_COMPANY_ID
+        sync: false
