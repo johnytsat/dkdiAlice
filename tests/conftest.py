@@ -1,3 +1,9 @@
+import os
+
+# Должно стоять до импорта app.* : иначе локальный .env с DIKIDI_BACKEND=sdk
+# заставит тесты строить реальный клиент Dikidi на импорте app.main.
+os.environ["DIKIDI_BACKEND"] = "mock"
+
 import pytest
 
 from app.alice import session_store

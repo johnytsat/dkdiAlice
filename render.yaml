@@ -11,10 +11,14 @@ services:
       - key: PYTHON_VERSION
         value: 3.13.0
       - key: DIKIDI_BACKEND
-        value: mock
+        value: sdk
       - key: DIKIDI_DEFAULT_STAFF_ID
-        value: "0"
-      - key: DIKIDI_TOKEN
+        value: ""
+      # sync: false — значения задаются вручную в дашборде Render
+      # и не попадают в git.
+      - key: DIKIDI_PHONE
+        sync: false
+      - key: DIKIDI_PASSWORD
         sync: false
       - key: DIKIDI_COMPANY_ID
         sync: false
