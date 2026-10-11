@@ -10,6 +10,18 @@ TIME_15_ENTITY = {
 }
 
 
+def test_start_name_and_phone_do_not_wait_for_dikidi_catalog(dikidi, monkeypatch):
+    def unavailable_catalog():
+        raise AssertionError('Unexpected network catalog request')
+    monkeypatch.setattr(dikidi, 'list_services', unavailable_catalog)
+    _, state = router.handle(build_request('добавь запись', new=True), dikidi)
+    assert state['step'] == 'ask_name'
+    _, state = router.handle(build_request('иван', original='Иван', state=state), dikidi)
+    assert state['step'] == 'ask_phone'
+    _, state = router.handle(build_request('89991234567', state=state), dikidi)
+    assert state['step'] == 'ask_services'
+
+
 def _walk_to_confirm(dikidi, service_words=("маникюр",)):
     """Проходит диалог до шага подтверждения, возвращает (text, state)."""
     _, state = router.handle(build_request("добавь запись", new=True), dikidi)

@@ -93,6 +93,7 @@ class SdkDikidiClient(DikidiClient):
 
     def _call(self, description: str, func, *args, **kwargs):
         """Единая точка вызова SDK: логирует и приводит любые сбои к DikidiUnavailable."""
+        started = time_module.monotonic()
         try:
             with self._request_lock:
                 return func(*args, **kwargs)
@@ -103,6 +104,10 @@ class SdkDikidiClient(DikidiClient):
             if isinstance(exc, httpx.HTTPStatusError):
                 logger.warning("Dikidi SDK HTTP: operation=%s status=%s", description, exc.response.status_code)
             raise DikidiUnavailable(f"Dikidi недоступна: {description}") from exc
+        finally:
+            elapsed = time_module.monotonic() - started
+            if elapsed >= 1:
+                logger.warning('Dikidi slow operation: operation=%s seconds=%.2f', description, elapsed)
 
     # --- DikidiClient ---------------------------------------------------
 

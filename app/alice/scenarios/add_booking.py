@@ -52,6 +52,11 @@ FIELD_WORDS = {
 
 def start(body: AliceRequestBody, dikidi: DikidiClient) -> tuple[str, dict]:
     data: dict[str, Any] = {}
+    if body.request.command.strip().lower().rstrip('.!?') in {
+        'добавь запись', 'добавить запись', 'новая запись', 'запиши клиента',
+        'запись клиента', 'добавь клиента',
+    }:
+        return _ask_next_or_confirm(data)
     _extract_into(body, dikidi, data)
     return _ask_next_or_confirm(data)
 
@@ -147,7 +152,9 @@ def _extract_into(
         if phone:
             data["phone"] = phone
 
-    if not data.get("services"):
+    # A name/phone/date answer does not need a network catalog lookup.
+    # Still extract a service from a compound opening request.
+    if not data.get("services") and focus_slot is None:
         service = nlu.extract_service(text, dikidi.list_services())
         if service:
             data["services"] = [{"id": service.id, "title": service.title}]
