@@ -25,6 +25,7 @@ import re
 import tempfile
 import threading
 import time as time_module
+import httpx
 from datetime import date, time
 from pathlib import Path
 
@@ -34,7 +35,7 @@ from app.dikidi.models import Booking, Service
 logger = logging.getLogger(__name__)
 
 SERVICES_TTL_SECONDS = 600
-# Клиент не найден в базе — Dikidi создаст его сам из имени и телефона записи.
+# Legacy marker; resolve it before reserving a slot.
 NEW_CLIENT_ID = 0
 
 
@@ -65,6 +66,7 @@ class SdkDikidiClient(DikidiClient):
 
         self._lock = threading.Lock()
         self._request_lock = threading.Lock()
+        self._client_lock = threading.Lock()
         self._api = None
         self._services_cache: list[Service] = []
         self._services_cached_at = 0.0
@@ -98,6 +100,8 @@ class SdkDikidiClient(DikidiClient):
             raise
         except Exception as exc:
             logger.warning("Dikidi SDK: %s не удалось (%s)", description, type(exc).__name__)
+            if isinstance(exc, httpx.HTTPStatusError):
+                logger.warning("Dikidi SDK HTTP: operation=%s status=%s", description, exc.response.status_code)
             raise DikidiUnavailable(f"Dikidi недоступна: {description}") from exc
 
     # --- DikidiClient ---------------------------------------------------
@@ -125,15 +129,26 @@ class SdkDikidiClient(DikidiClient):
         return list(services)
 
     def find_or_create_client(self, name: str, phone: str) -> int | str:
+        with self._client_lock:
+            return self._find_or_create_client(name, phone)
+
+    def _find_or_create_client(self, name: str, phone: str) -> int | str:
+        from dikidi.clients.schemas import ClientCreate
         api = self._get_api()
         digits = _phone_digits(phone)
+        if not name.strip() or len(digits) != 10:
+            raise DikidiUnavailable("Не заполнены имя или телефон клиента")
         found = self._call("поиск клиента", api.clients.search, digits or phone, 20)
         for candidate in found or []:
-            if _phone_digits(getattr(candidate, "phone", "")) == digits:
+            if candidate.id and _phone_digits(getattr(candidate, "phone", "")) == digits:
                 return candidate.id
-        # Отдельно создавать клиента не нужно: Dikidi сама завёдет его при
-        # сохранении записи, если передать client_id=0 вместе с именем и телефоном.
-        return NEW_CLIENT_ID
+        # Do not rely on anonymous client_id=0 implicitly creating a CRM card.
+        self._call("создание клиента", api.clients.create, ClientCreate(name=name, phone=phone))
+        found = self._call("проверка клиента", api.clients.search, digits, 20)
+        for candidate in found or []:
+            if candidate.id and _phone_digits(getattr(candidate, "phone", "")) == digits:
+                return candidate.id
+        raise DikidiUnavailable("Карточка клиента не подтверждена; время не резервировалось")
 
     def create_booking(self, *args, **kwargs) -> int | str:
         try:
@@ -153,12 +168,14 @@ class SdkDikidiClient(DikidiClient):
         from dikidi import BookingRequest
 
         api = self._get_api()
+        if not client_id or str(client_id) == '0':
+            client_id = self.find_or_create_client(client_name, client_phone)
         request = BookingRequest(
             master_id=self._resolve_master_id(),
             service_ids=[service.id for service in services],
             time_str=f"{booking_date.isoformat()} {booking_time.strftime('%H:%M:%S')}",
             client_name=client_name,
-            client_phone=client_phone,
+            client_phone=re.sub(r'\D', '', client_phone),
             client_id=client_id or None,
         )
         # book() теряет record_id, возвращая только ответ save_appointment.
@@ -178,10 +195,15 @@ class SdkDikidiClient(DikidiClient):
         # HTTP 200 и даже пустой JSON ещё не означают сохранённый визит.
         records = self._call("проверка сохранения", api.appointments.get_records,
                              booking_date.isoformat(), booking_date.isoformat())
+        matching = [r for r in records if str(r.id) == str(reservation.record_id)]
         if not any(str(r.id) == str(reservation.record_id)
                    and not r.is_block
+                   and bool((r.client_name or '').strip())
                    and _phone_digits(r.client_phone) == _phone_digits(client_phone)
                    for r in records):
+            logger.warning('Dikidi booking verification failed: found=%s named=%s phone_matches=%s',
+                           bool(matching), any(bool((r.client_name or '').strip()) for r in matching),
+                           any(_phone_digits(r.client_phone) == _phone_digits(client_phone) for r in matching))
             raise DikidiUnavailable("Сохранение записи не подтверждено журналом")
         return reservation.record_id
 

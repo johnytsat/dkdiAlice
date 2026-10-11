@@ -85,6 +85,12 @@ class FakeClients:
     def __init__(self, found=None):
         self._found = found or []
         self.query = None
+        self.created = []
+
+    def create(self, data):
+        self.created.append(data)
+        self._found.append(FakeSdkClient('101', data.name, data.phone))
+        return {}
 
     def search(self, query, limit=20):
         self.query = query
@@ -164,7 +170,7 @@ def test_create_booking_builds_full_datetime_and_service_ids():
     assert request.client_id == "5"
 
 
-def test_create_booking_sends_none_client_id_for_new_client():
+def test_create_booking_resolves_new_client_before_reservation():
     api = FakeApi()
     client = make_client(api, default_staff_id="42")
 
@@ -177,7 +183,9 @@ def test_create_booking_sends_none_client_id_for_new_client():
         booking_time=time(9, 30),
     )
 
-    assert api.appointments.booked[0].client_id is None
+    assert api.appointments.booked[0].client_id == '101'
+    assert api.appointments.booked[0].client_phone == '79035523232'
+    assert api.clients.created[0].name == 'Новый'
 
 
 def test_master_id_falls_back_to_first_from_catalog():
@@ -247,9 +255,25 @@ def test_find_client_matches_phone_in_any_format(stored_phone):
     assert make_client(api).find_or_create_client("Анна", "+79035523232") == "88"
 
 
-def test_find_client_returns_new_marker_when_phone_differs():
+def test_find_client_creates_card_when_phone_differs():
     api = FakeApi(found_clients=[FakeSdkClient("88", "Другая", "+79990000000")])
-    assert make_client(api).find_or_create_client("Анна", "+79035523232") == NEW_CLIENT_ID
+    assert make_client(api).find_or_create_client("Анна", "+79035523232") == '101'
+    assert len(api.clients.created) == 1
+
+
+def test_unconfirmed_client_does_not_reserve_time():
+    api = FakeApi()
+    api.clients.create = lambda data: {}
+    with pytest.raises(DikidiUnavailable):
+        make_client(api).create_booking(0, 'Анна', '+79035523232',
+            [Service(id='11', title='услуга')], date(2026, 10, 12), time(15))
+    assert not api.appointments.booked
+
+
+def test_existing_client_is_not_created_again():
+    api = FakeApi(found_clients=[FakeSdkClient('88', 'Анна', '+79035523232')])
+    assert make_client(api).find_or_create_client('Анна', '+79035523232') == '88'
+    assert not api.clients.created
 
 
 def test_sdk_errors_become_dikidi_unavailable():
@@ -269,3 +293,12 @@ def test_save_without_journal_confirmation_is_not_success():
     with pytest.raises(DikidiUnavailable):
         make_client(api).create_booking(0, "Анна", "+79035523232",
             [Service(id="11", title="услуга")], date(2026, 10, 12), time(15))
+
+
+def test_nameless_saved_record_is_not_reported_as_success():
+    api = FakeApi(records=[FakeSdkRecord('999', '15:00', None, '+79035523232')])
+    api.appointments.save_appointment = lambda **kwargs: {}
+    with pytest.raises(DikidiUnavailable):
+        make_client(api).create_booking('88', 'Анна', '+79035523232',
+            [Service(id='11', title='услуга')], date(2026, 10, 12), time(15))
+    assert len(api.appointments.booked) == 1
